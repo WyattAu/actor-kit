@@ -144,3 +144,7 @@ Three criterion suites: `spawn_throughput`, `message_roundtrip`,
 
 Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at
 your option.
+
+## Performance
+
+Measured hot-path SLOs and allocation profile: [PERF-SLO.md](PERF-SLO.md). Benchmarks run in CI (non-gating regression visibility against the saved `ci` baseline).
