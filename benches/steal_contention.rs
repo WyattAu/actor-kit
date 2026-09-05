@@ -26,19 +26,32 @@ fn bench_steal_contention(c: &mut Criterion) {
                     let scheduler = Arc::clone(&scheduler);
                     let targets = targets.clone();
                     handles.push(std::thread::spawn(move || {
-                        for i in 0..10_000usize {
-                            let target = targets[(p * i) % targets.len()];
-                            scheduler
-                                .try_send(
-                                    target,
-                                    Message {
-                                        sender: None,
-                                        payload: MessagePayload::Custom(vec![(i % 256) as u8]),
-                                        priority: Priority::Normal,
-                                    },
-                                )
-                                .unwrap();
-                        }
+                        // Backpressured sends: `try_send` is fail-fast and a
+                        // burst can transiently fill a target's mailbox
+                        // (producer 0 concentrates on one target by index);
+                        // awaiting `send` paces the producer instead.
+                        let rt = tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .unwrap();
+                        rt.block_on(async {
+                            for i in 0..10_000usize {
+                                let target = targets[(p * i) % targets.len()];
+                                scheduler
+                                    .send(
+                                        target,
+                                        Message {
+                                            sender: None,
+                                            payload: MessagePayload::Custom(vec![
+                                                (i % 256) as u8
+                                            ]),
+                                            priority: Priority::Normal,
+                                        },
+                                    )
+                                    .await
+                                    .unwrap();
+                            }
+                        });
                     }));
                 }
                 for h in handles {

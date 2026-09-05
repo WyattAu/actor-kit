@@ -13,4 +13,4 @@ jobs:
       loom: false
       wasm: false
       miri: false
-      bench-regression: false  # off: steal_contention bench trips the actor drain stall (~10k msgs) — see PERF-SLO.md
+      bench-regression: true  # drain stall fixed in 0.1.1 (mailbox permits released on consumption); both benches run clean — see PERF-SLO.md

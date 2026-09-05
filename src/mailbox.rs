@@ -194,12 +194,18 @@ impl Mailbox {
     /// Receive a message from the mailbox (async, waits if empty).
     ///
     /// Uses `tokio::sync::Notify` for efficient wakeup instead of busy-polling.
+    /// The `Notified` future is created and enabled *before* the emptiness
+    /// check, so a `notify_waiters` racing with this call cannot be missed
+    /// (lost-wakeup).
     pub async fn recv(&self) -> Message {
         loop {
+            let notified = self.notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
             if let Some(msg) = self.try_recv() {
                 return msg;
             }
-            self.notify.notified().await;
+            notified.await;
         }
     }
 

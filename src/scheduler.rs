@@ -204,11 +204,19 @@ impl ActorScheduler {
             .map(|_| Arc::new(WorkerStats::default()))
             .collect();
 
+        // Honor the configured mailbox capacity: the registry creates a
+        // mailbox per actor, so it must see `config.mailbox_config`.
+        // (`ActorRegistry::new()` silently fell back to the 10_000-message
+        // default, making `SchedulerConfig::mailbox_config` a dead knob.)
+        let registry = Arc::new(ActorRegistry::with_mailbox_config(
+            config.mailbox_config.clone(),
+        ));
+
         Self {
             config,
             global_queue: Arc::new(WorkQueue::new()),
             priority_queue: Arc::new(PriorityQueue::new()),
-            registry: Arc::new(ActorRegistry::new()),
+            registry,
             stealer_registry: StealerRegistry::new(),
             worker_handles: Mutex::new(Vec::new()),
             running: Arc::new(AtomicBool::new(false)),
@@ -777,6 +785,17 @@ impl ActorScheduler {
                     stats.processed.fetch_add(1, Ordering::Relaxed);
                     total_processed.fetch_add(1, Ordering::Relaxed);
                     registry.record_processed(&actor_id);
+                    // The message is now consumed: release the mailbox slot
+                    // it parked in. `Mailbox::send`/`try_send` acquire one
+                    // capacity permit per message and `forget()` it so the
+                    // slot stays held until consumption; the worker processes
+                    // the `Task` copy from the work queue, so without this
+                    // pop the permit and slot leak forever. After `capacity`
+                    // cumulative messages the semaphore exhausted and every
+                    // further send stalled (the 0.1.0 drain-stall bug).
+                    if let Some(mailbox) = registry.get_mailbox(&actor_id) {
+                        mailbox.try_recv();
+                    }
                 }
             }
             Some(ActorState::Suspended) => {
