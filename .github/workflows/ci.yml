@@ -1,0 +1,15 @@
+name: CI
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  quality:
+    uses: WyattAu/engineering-standards/.github/workflows/rust-kit.yml@main
+    with:
+      tier: b
+      all-features: true
+      loom: false
+      wasm: false
+      miri: false
