@@ -122,7 +122,20 @@ impl SchedulerConfig {
 }
 
 /// Per-worker statistics.
+///
+/// Cache-line isolation: `WorkerStats` instances live in separate `Arc`
+/// allocations, but an `Arc` allocation is a 16-byte header plus these three
+/// 8-byte counters (~40 bytes). The allocator typically places consecutive
+/// allocations 48 bytes apart, so worker *i*'s counters and worker *i+1*'s
+/// counters can share a 64-byte cache line even though no field is
+/// logically shared. Every message processed does three `fetch_add`s on
+/// this struct by the owning worker, so a shared line would ping-pong
+/// between workers on every message (false sharing). `repr(align(64))`
+/// pins the counters to their own line per instance. Each instance has a
+/// single writer (the owning worker); `stats()` readers tolerate the
+/// slightly larger footprint.
 #[derive(Debug, Default)]
+#[repr(align(64))]
 struct WorkerStats {
     /// Tasks processed by this worker
     processed: AtomicU64,
@@ -150,8 +163,6 @@ pub struct ActorScheduler {
     running: Arc<AtomicBool>,
     /// Total actors spawned
     total_actors: AtomicU64,
-    /// Total messages processed
-    total_processed: Arc<AtomicU64>,
     /// Per-worker statistics
     worker_stats: Vec<Arc<WorkerStats>>,
     /// Optional executor for WASM execution
@@ -221,7 +232,6 @@ impl ActorScheduler {
             worker_handles: Mutex::new(Vec::new()),
             running: Arc::new(AtomicBool::new(false)),
             total_actors: AtomicU64::new(0),
-            total_processed: Arc::new(AtomicU64::new(0)),
             worker_stats,
             executor,
             resource_policy,
@@ -264,7 +274,6 @@ impl ActorScheduler {
             let registry = self.registry.clone();
             let config = self.config.clone();
             let running_flag = self.running.clone();
-            let total_processed = self.total_processed.clone();
             let stats = stats.clone();
             let stealer_registry = self.stealer_registry.clone();
             let executor = self.executor.clone();
@@ -280,7 +289,6 @@ impl ActorScheduler {
                         registry,
                         config,
                         running_flag,
-                        total_processed,
                         stats,
                         stealer_registry,
                         executor.as_ref(),
@@ -566,7 +574,6 @@ impl ActorScheduler {
         registry: Arc<ActorRegistry>,
         config: SchedulerConfig,
         running: Arc<AtomicBool>,
-        total_processed: Arc<AtomicU64>,
         stats: Arc<WorkerStats>,
         stealer_registry: StealerRegistry,
         executor: Option<&Arc<dyn ActorExecutor>>,
@@ -591,21 +598,21 @@ impl ActorScheduler {
 
             // Try priority queue first
             if let Some(task) = priority_queue.pop() {
-                Self::process_task_safe(&registry, task, &total_processed, &stats, executor);
+                Self::process_task_safe(&registry, task, &stats, executor);
                 consecutive_empty = 0;
                 continue;
             }
 
             // Try local queue
             if let Some(task) = worker.pop() {
-                Self::process_task_safe(&registry, task, &total_processed, &stats, executor);
+                Self::process_task_safe(&registry, task, &stats, executor);
                 consecutive_empty = 0;
                 continue;
             }
 
             // Try global queue
             if let Some(task) = global_queue.steal_global() {
-                Self::process_task_safe(&registry, task, &total_processed, &stats, executor);
+                Self::process_task_safe(&registry, task, &stats, executor);
                 consecutive_empty = 0;
                 continue;
             }
@@ -613,7 +620,7 @@ impl ActorScheduler {
             // Try stealing from other workers
             if let Some(task) = stealer.steal() {
                 stats.stolen.fetch_add(1, Ordering::Relaxed);
-                Self::process_task_safe(&registry, task, &total_processed, &stats, executor);
+                Self::process_task_safe(&registry, task, &stats, executor);
                 consecutive_empty = 0;
                 continue;
             }
@@ -644,14 +651,13 @@ impl ActorScheduler {
     fn process_task_safe(
         registry: &ActorRegistry,
         task: Task,
-        total_processed: &AtomicU64,
         stats: &WorkerStats,
         executor: Option<&Arc<dyn ActorExecutor>>,
     ) {
         let actor_id = task.actor_id;
         let batch_size = 1 + task.additional_messages.len();
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            Self::process_task(registry, task, total_processed, stats, executor);
+            Self::process_task(registry, task, stats, executor);
         }));
 
         if let Err(panic_payload) = result {
@@ -675,35 +681,41 @@ impl ActorScheduler {
         }
     }
 
+    /// Deterministic-simulation seam (feature `sim`).
+    ///
+    /// Runs one task through the *real* processing pipeline
+    /// ([`Self::process_task_safe`] → panic containment → state transitions →
+    /// mailbox slot release) against the real registry and mailboxes — without
+    /// worker threads. The sim owns task selection and calls this exactly once
+    /// per scheduling decision; this is the only place the simulation touches
+    /// production execution code.
+    ///
+    /// Returns the number of messages the runtime counted as processed.
+    #[cfg(feature = "sim")]
+    pub(crate) fn sim_process_task(
+        registry: &ActorRegistry,
+        task: Task,
+        executor: Option<&Arc<dyn ActorExecutor>>,
+    ) -> u64 {
+        let stats = WorkerStats::default();
+        Self::process_task_safe(registry, task, &stats, executor);
+        stats.processed.load(Ordering::Relaxed)
+    }
+
     fn process_task(
         registry: &ActorRegistry,
         mut task: Task,
-        total_processed: &AtomicU64,
         stats: &WorkerStats,
         executor: Option<&Arc<dyn ActorExecutor>>,
     ) {
         if task.additional_messages.is_empty() {
             // Fast path: single message
-            Self::process_single_message(
-                registry,
-                task.actor_id,
-                &task.message,
-                total_processed,
-                stats,
-                executor,
-            );
+            Self::process_single_message(registry, task.actor_id, &task.message, stats, executor);
         } else {
             // Batch path: process primary message, then additional ones
             stats.batches_processed.fetch_add(1, Ordering::Relaxed);
 
-            Self::process_single_message(
-                registry,
-                task.actor_id,
-                &task.message,
-                total_processed,
-                stats,
-                executor,
-            );
+            Self::process_single_message(registry, task.actor_id, &task.message, stats, executor);
 
             // Early exit if the actor failed during the first message
             if matches!(
@@ -714,14 +726,7 @@ impl ActorScheduler {
             }
 
             for message in task.additional_messages.drain(..) {
-                Self::process_single_message(
-                    registry,
-                    task.actor_id,
-                    &message,
-                    total_processed,
-                    stats,
-                    executor,
-                );
+                Self::process_single_message(registry, task.actor_id, &message, stats, executor);
 
                 // Stop processing remaining batch if actor is no longer viable
                 if matches!(
@@ -738,7 +743,6 @@ impl ActorScheduler {
         registry: &ActorRegistry,
         actor_id: ActorId,
         message: &Message,
-        total_processed: &AtomicU64,
         stats: &WorkerStats,
         executor: Option<&Arc<dyn ActorExecutor>>,
     ) {
@@ -783,7 +787,6 @@ impl ActorScheduler {
 
                 if should_count {
                     stats.processed.fetch_add(1, Ordering::Relaxed);
-                    total_processed.fetch_add(1, Ordering::Relaxed);
                     registry.record_processed(&actor_id);
                     // The message is now consumed: release the mailbox slot
                     // it parked in. `Mailbox::send`/`try_send` acquire one

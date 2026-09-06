@@ -77,3 +77,45 @@ size) when it processes the message; the config knob is honored;
 - Local: `cargo bench --bench message_roundtrip -- --save-baseline main`,
   compare with `-- --baseline main`.
 - Alert threshold: >2× mean regression on `message_roundtrip/send_drain_200_1w`.
+
+## Addendum (2026-09): false-sharing / cache-line audit (scheduler)
+
+Audit of hot atomics in `scheduler.rs` / `StealerRegistry`, and what changed:
+
+- **`WorkerStats` (per-worker counters): padded.** Three adjacent
+  `AtomicU64`s (`processed`, `stolen`, `batches_processed`) per worker
+  instance. Each instance lives in its own `Arc` allocation, but an `Arc`
+  allocation is a 16-byte header + 24 bytes of counters (~40 bytes); the
+  allocator typically places consecutive allocations 48 bytes apart, so
+  worker *i*'s and worker *i+1*'s counters can share a 64-byte line even
+  though no field is logically shared. Every message does three
+  `fetch_add`s on the owning worker's instance → cross-worker line
+  ping-pong. Fix: `#[repr(align(64))]` on the struct (single writer per
+  instance, so instance-level alignment is sufficient; field-level
+  `crossbeam_utils::CachePadded` would help only if different threads
+  wrote different fields of one instance, which is not the case here).
+- **Global `total_processed: Arc<AtomicU64>`: removed.** Every message
+  from every worker did a `fetch_add` on this one line, but the counter
+  was *write-only* — `stats()` always derived `total_messages_processed`
+  from the per-worker counters and never read it. Dead contended line;
+  `stats()` now reports the same sum it always computed.
+- **`running: Arc<AtomicBool>`: audited, unchanged.** Every worker does an
+  `Acquire` load per iteration, but between `start()`/`stop()` the line is
+  read-only shared (MESI shared state, no invalidations), and writes
+  happen once per scheduler lifetime. Padding would waste a line for no
+  coherence traffic.
+- **`StealerRegistry.version`: audited, unchanged.** Read every
+  `stealer_refresh_interval` (1000) iterations, written only during
+  startup; lives in its own `Arc` allocation.
+
+Measured on `steal_contention` (i5-9400F, 6 cores, `taskset -c 0-5`;
+machine otherwise loaded — treat deltas, not absolutes):
+
+- `perf stat` over the fixed `--test` workload (2×10k + 8×10k = 100k
+  messages once): cache-misses median 1.37M → **1.17M (−15%)** over 5
+  runs each; retired instructions unchanged within noise (we removed a
+  counter, not added code).
+- criterion medians: `2_producers_x_10k` 16.2 ms → **12.3 ms (−24%)**;
+  `8_producers_x_10k` 35.1 ms → **33.6 ms (−4%)**. The 2-producer case
+  gains most: each worker processes more messages per steal, so the
+  per-message contended line was a larger fraction of the work.
