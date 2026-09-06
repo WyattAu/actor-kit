@@ -1,6 +1,6 @@
 [package]
 name = "actor-kit"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.85"
 description = "Work-stealing actor runtime with OTP-style supervision trees, crossbeam work-stealing scheduling, and bounded mailbox backpressure"
@@ -28,6 +28,10 @@ serde = { version = "1", features = ["derive"], optional = true }
 async-trait = { version = "0.1", optional = true }
 bincode = { version = "1.3", optional = true }
 rkyv = { version = "0.8", features = ["bytecheck"], optional = true }
+# Deterministic simulation testing (`sim` module): seeded xoshiro RNG driving
+# task selection and fault injection. No other random/time source is allowed
+# on the sim path.
+rand_xoshiro = { version = "0.8", optional = true }
 
 [dev-dependencies]
 proptest = "1"
@@ -51,8 +55,11 @@ zero-copy = ["dep:rkyv"]
 # carries `#![deny(unsafe_code)]`; this feature opts into the one exception.
 # Every block carries SAFETY comments. Review before enabling.
 unsafe-pool = []
+# Deterministic simulation testing (`sim` module): seeded scheduler, virtual
+# clock, fault injection, seed-replay traces.
+sim = ["dep:rand_xoshiro"]
 # Everything above.
-full = ["serde", "zero-copy", "unsafe-pool"]
+full = ["serde", "zero-copy", "unsafe-pool", "sim"]
 
 [[bench]]
 name = "spawn_throughput"

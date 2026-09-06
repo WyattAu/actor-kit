@@ -65,6 +65,9 @@
 //! - `zero-copy` — rkyv-backed zero-copy message path (`zero_copy` module).
 //! - `unsafe-pool` — bump-allocator memory pool (`memory_pool` module).
 //!   **The only `unsafe` code in the crate lives behind this flag.**
+//! - `sim` — deterministic simulation testing (`sim` module): a seeded
+//!   single-threaded scheduler replacement, virtual clock, fault injection,
+//!   and seed-replay traces. TigerBeetle-style DST; see the `sim` module docs.
 //! - `full` — all of the above.
 //!
 //! The crate carries `#![deny(unsafe_code)]`; `memory_pool` (behind
@@ -85,6 +88,8 @@ mod registry;
 #[cfg(feature = "serde")]
 pub mod rpc;
 mod scheduler;
+#[cfg(feature = "sim")]
+pub mod sim;
 pub mod supervisor;
 #[cfg(feature = "zero-copy")]
 pub mod zero_copy;

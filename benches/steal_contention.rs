@@ -42,9 +42,7 @@ fn bench_steal_contention(c: &mut Criterion) {
                                         target,
                                         Message {
                                             sender: None,
-                                            payload: MessagePayload::Custom(vec![
-                                                (i % 256) as u8
-                                            ]),
+                                            payload: MessagePayload::Custom(vec![(i % 256) as u8]),
                                             priority: Priority::Normal,
                                         },
                                     )

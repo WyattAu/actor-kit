@@ -1,0 +1,30 @@
+name: sim-sweep
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: "Number of simulation seeds to sweep"
+        required: false
+        default: "10000"
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: seed sweep (release, sharded by env)
+        run: |
+          SEEDS=${{ github.event.inputs.seeds || '10000' }}
+          for start in $(seq 0 500 $((SEEDS - 1))); do
+            end=$((start + 499))
+            SEED_START=$start SEED_END=$end \
+              cargo test --release --features sim --test sim -- \
+              --ignored --test-threads=1 || {
+              echo "::error::sim sweep failed in seed range [$start, $end]"
+              exit 1
+            }
+          done

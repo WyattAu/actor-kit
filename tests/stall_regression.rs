@@ -12,7 +12,9 @@
 //! This test sends far more than the capacity with continuous backpressure
 //! and requires every message to be processed within a hard timeout.
 
-use actor_kit::{ActorBuilder, ActorScheduler, MailboxConfig, Message, MessagePayload, Priority, SchedulerConfig};
+use actor_kit::{
+    ActorBuilder, ActorScheduler, MailboxConfig, Message, MessagePayload, Priority, SchedulerConfig,
+};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 

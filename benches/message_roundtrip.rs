@@ -10,8 +10,10 @@
 //! runtime every 4k messages). A full criterion run sustains millions of
 //! cumulative messages through one actor.
 
-use actor_kit::{ActorBuilder, ActorScheduler, MailboxConfig, Message, MessagePayload, Priority, SchedulerConfig};
-use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use actor_kit::{
+    ActorBuilder, ActorScheduler, MailboxConfig, Message, MessagePayload, Priority, SchedulerConfig,
+};
+use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use std::sync::Arc;
 
 const BATCH: u64 = 200;
