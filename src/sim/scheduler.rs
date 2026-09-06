@@ -117,10 +117,7 @@ impl ReadySet {
         let mut picked = match self.priority.pop_front() {
             Some(t) => t,
             None => match policy {
-                SchedulingPolicy::Fifo => match self.ready.pop_front() {
-                    Some(t) => t,
-                    None => return None,
-                },
+                SchedulingPolicy::Fifo => self.ready.pop_front()?,
                 SchedulingPolicy::Random => {
                     let len = self.ready.len();
                     if len == 0 {
@@ -139,7 +136,7 @@ impl ReadySet {
                             .get(&actor_key(&t.task.actor_id))
                             .copied()
                             .unwrap_or(0);
-                        if best.map_or(true, |(bs, _)| served < bs) {
+                        if best.is_none_or(|(bs, _)| served < bs) {
                             best = Some((served, idx));
                         }
                     }
@@ -149,14 +146,12 @@ impl ReadySet {
             },
         };
 
-        self.last_served.insert(actor_key(&picked.task.actor_id), tick);
+        self.last_served
+            .insert(actor_key(&picked.task.actor_id), tick);
         if let Some(q) = self.queued_msgs.get_mut(&actor_key(&picked.task.actor_id)) {
             *q = q.saturating_sub(picked.app_len() as u64);
         }
-        picked
-            .task
-            .additional_messages
-            .shrink_to_fit();
+        picked.task.additional_messages.shrink_to_fit();
         Some(picked)
     }
 

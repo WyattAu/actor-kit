@@ -303,10 +303,14 @@ impl TraceOp {
             TraceOp::Reject { mid, to, reason } => push(
                 buf,
                 3,
-                &[*mid, *to, match reason {
-                    RejectReason::Fault => 0,
-                    RejectReason::DeadTarget => 1,
-                }],
+                &[
+                    *mid,
+                    *to,
+                    match reason {
+                        RejectReason::Fault => 0,
+                        RejectReason::DeadTarget => 1,
+                    },
+                ],
             ),
             TraceOp::Deliver { first, len, to } => push(buf, 4, &[*first, *len, *to]),
             TraceOp::Blocked { first, len, to } => push(buf, 5, &[*first, *len, *to]),
@@ -695,11 +699,7 @@ impl Sim {
                 to: ord,
             });
         }
-        self.ready.push(SimTask {
-            ord,
-            task,
-            mids,
-        });
+        self.ready.push(SimTask { ord, task, mids });
     }
 
     /// Inject this tick's workload (fixed draw order). The message budget
@@ -825,12 +825,7 @@ impl Sim {
         while attempts > 0 {
             attempts -= 1;
             let payload = self.blocked.pop_front().expect("checked non-empty");
-            self.attempt_delivery(
-                payload.ord,
-                payload.msgs,
-                payload.mids,
-                payload.was_blocked,
-            );
+            self.attempt_delivery(payload.ord, payload.msgs, payload.mids, payload.was_blocked);
         }
     }
 
@@ -856,9 +851,9 @@ impl Sim {
             self.retry_blocked();
 
             for _ in 0..self.config.processing_per_tick {
-                if let Some(sim_task) = self
-                    .ready
-                    .pick(self.config.policy, &mut self.rng, self.tick)
+                if let Some(sim_task) =
+                    self.ready
+                        .pick(self.config.policy, &mut self.rng, self.tick)
                 {
                     self.process_chosen(sim_task);
                 } else {
@@ -998,11 +993,7 @@ impl Sim {
     /// copy not yet consumed (the drain removes them all).
     fn settle_crash(&mut self, ord: u64, task_mids: &[u64]) {
         let id = self.actors[ord as usize];
-        let mailbox_len = self
-            .registry
-            .get_mailbox(&id)
-            .map(|m| m.len())
-            .unwrap_or(0) as u64;
+        let mailbox_len = self.registry.get_mailbox(&id).map(|m| m.len()).unwrap_or(0) as u64;
         let ledger = &mut self.ledger[ord as usize];
         let residual = ledger
             .delivered
@@ -1035,12 +1026,17 @@ impl Sim {
         match result {
             Ok(()) => {
                 self.stats.restarted += 1;
-                self.trace.push(TraceOp::Restart { to: ord, allowed: true });
+                self.trace.push(TraceOp::Restart {
+                    to: ord,
+                    allowed: true,
+                });
                 self.respawn(ord);
             }
             Err(_) => {
-                self.trace
-                    .push(TraceOp::Restart { to: ord, allowed: false });
+                self.trace.push(TraceOp::Restart {
+                    to: ord,
+                    allowed: false,
+                });
                 self.kill(ord);
             }
         }
@@ -1268,9 +1264,11 @@ mod tests {
 
     #[test]
     fn fault_free_sim_quiesces_exactly_once() {
-        let mut config = SimConfig::default();
-        config.actors = 4;
-        config.messages = 256;
+        let config = SimConfig {
+            actors: 4,
+            messages: 256,
+            ..SimConfig::default()
+        };
         let mut sim = Sim::with_config(1, config);
         let outcome = sim.run_to_quiescence();
         assert!(outcome.quiesced, "fault-free workload must drain");
@@ -1284,9 +1282,11 @@ mod tests {
     #[test]
     fn deterministic_same_seed_same_hash() {
         let build = || {
-            let mut config = SimConfig::default();
-            config.messages = 128;
-            config.faults = FaultConfig::chaos(0.05);
+            let config = SimConfig {
+                messages: 128,
+                faults: FaultConfig::chaos(0.05),
+                ..SimConfig::default()
+            };
             Sim::with_config(777, config)
         };
         let a = build().run_to_quiescence();
@@ -1298,9 +1298,11 @@ mod tests {
 
     #[test]
     fn chaotic_sim_quiesces_with_restart_accounting() {
-        let mut config = SimConfig::default();
-        config.messages = 512;
-        config.faults = FaultConfig::chaos(0.02);
+        let config = SimConfig {
+            messages: 512,
+            faults: FaultConfig::chaos(0.02),
+            ..SimConfig::default()
+        };
         let mut sim = Sim::with_config(9, config);
         let outcome = sim.run_to_quiescence();
         assert!(outcome.quiesced);

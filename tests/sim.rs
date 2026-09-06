@@ -9,12 +9,12 @@
 use actor_kit::sim::{FaultConfig, Sim, SimConfig};
 
 /// The chaotic configuration used by the in-crate invariant checks.
-fn chaos_config(seed: u64) -> SimConfig {
-    let mut config = SimConfig::default();
-    config.messages = 512;
-    config.faults = FaultConfig::chaos(0.02);
-    let _ = seed; // seed is passed to Sim::with_config
-    config
+fn chaos_config(_seed: u64) -> SimConfig {
+    SimConfig {
+        messages: 512,
+        faults: FaultConfig::chaos(0.02),
+        ..SimConfig::default()
+    }
 }
 
 #[test]

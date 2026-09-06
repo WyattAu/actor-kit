@@ -180,7 +180,11 @@ mod tests {
         let mut b = SimRng::new(5);
         for _ in 0..100 {
             assert!(!a.roll(0.0));
-            assert_eq!(a.next_u64(), b.next_u64(), "zero-prob draws consume nothing");
+            assert_eq!(
+                a.next_u64(),
+                b.next_u64(),
+                "zero-prob draws consume nothing"
+            );
         }
         assert!((0..100).filter(|_| a.roll(1.0)).count() == 100);
     }

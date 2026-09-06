@@ -15,8 +15,8 @@
 //! (`Start`/`Stop`/signals) are recorded as [`ExecTag::System`] and never
 //! crash.
 
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 use crate::executor::{ActorExecutor, ExecutionResult};
 use crate::{ActorId, Message, MessagePayload};

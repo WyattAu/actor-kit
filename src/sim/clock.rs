@@ -120,7 +120,11 @@ mod tests {
     fn clock_moves_only_when_advanced() {
         let clock = SimClock::new();
         assert_eq!(clock.now(), SimInstant::EPOCH);
-        assert_eq!(clock.now(), SimInstant::EPOCH, "reading must not advance time");
+        assert_eq!(
+            clock.now(),
+            SimInstant::EPOCH,
+            "reading must not advance time"
+        );
         let t = clock.advance(Duration::from_millis(5));
         assert_eq!(t.as_micros(), 5_000);
         assert_eq!(clock.now().as_micros(), 5_000);
