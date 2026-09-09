@@ -11,6 +11,7 @@ documentation = "https://docs.rs/actor-kit"
 readme = "README.md"
 keywords = ["actor", "supervision", "work-stealing", "erlang", "concurrency"]
 categories = ["concurrency", "asynchronous"]
+exclude = ["/target"]
 
 [dependencies]
 tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
@@ -75,3 +76,7 @@ harness = false
 
 [profile.bench]
 debug = true
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
