@@ -1,3 +1,6 @@
+// Tests/benches assert invariants directly; unwrap/expect keeps failures loud.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! Message round-trip: send 200-message bursts to a live actor through a
 //! bounded mailbox (capacity 64); semaphore backpressure paces the producer
 //! at the actor's true consumption rate, so the measured time is the

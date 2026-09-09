@@ -1,3 +1,6 @@
+// Tests/benches assert invariants directly; unwrap/expect keeps failures loud.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! Property-based tests.
 //!
 //! 1. Mailbox delivery: for N actors × M messages, every message is

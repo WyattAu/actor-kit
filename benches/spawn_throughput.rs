@@ -1,3 +1,6 @@
+// Tests/benches assert invariants directly; unwrap/expect keeps failures loud.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! Spawn throughput: how fast can we register actors on the scheduler.
 
 use actor_kit::{ActorScheduler, SchedulerConfig};

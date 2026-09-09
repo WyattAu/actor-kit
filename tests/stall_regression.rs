@@ -1,3 +1,6 @@
+// Regression tests assert invariants directly; unwrap/expect keeps failures loud.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! Regression test for the sustained-delivery drain stall (fix in 0.1.1).
 //!
 //! Symptom on 0.1.0: an actor stops consuming after `mailbox_capacity`

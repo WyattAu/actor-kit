@@ -1,3 +1,6 @@
+// Tests/benches assert invariants directly; unwrap/expect keeps failures loud.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! Steal contention: many producers hammering a shared work-stealing pool
 //! from multiple OS threads while workers steal from each other.
 

@@ -1,3 +1,6 @@
+// Tests/benches assert invariants directly; unwrap/expect keeps failures loud.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! End-to-end: spawn → crash → supervisor restart → message roundtrip.
 //!
 //! Wires the two halves of the runtime together: the work-stealing scheduler

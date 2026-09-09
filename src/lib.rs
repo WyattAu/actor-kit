@@ -75,6 +75,8 @@
 
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
+// Test code asserts invariants directly; unwrap/expect keeps failures loud.
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 pub mod error;
 mod executor;
@@ -88,6 +90,9 @@ mod registry;
 #[cfg(feature = "serde")]
 pub mod rpc;
 mod scheduler;
+// The deterministic sim module relies on invariants (unique ids, peeked
+// non-empty queues, uncontended Mutexes) where unwrap/expect is intentional.
+#[cfg_attr(feature = "sim", allow(clippy::unwrap_used, clippy::expect_used))]
 #[cfg(feature = "sim")]
 pub mod sim;
 pub mod supervisor;
@@ -249,6 +254,7 @@ impl ActorContext {
 
 /// Internal helper: a minimal single-threaded runtime for doctests/examples.
 #[doc(hidden)]
+#[allow(clippy::expect_used)] // doctest support: failure here is a bug, not recoverable
 pub fn rt() -> tokio::runtime::Runtime {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
