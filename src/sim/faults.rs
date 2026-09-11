@@ -1,7 +1,7 @@
 //! Seeded fault injection for deterministic simulation.
 //!
 //! Every fault decision is a draw from the sim's single seeded RNG stream
-//! ([`SimRng`]), consumed in a fixed program order — so the fault schedule
+//! (`SimRng`), consumed in a fixed program order — so the fault schedule
 //! is a pure function of the seed. The same seed replays the exact same
 //! crashes, rejections, delays, and duplicates.
 //!

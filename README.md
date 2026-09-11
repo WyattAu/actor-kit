@@ -1,5 +1,9 @@
 # actor-kit
 
+[![docs.rs](https://docs.rs/actor-kit/badge.svg)](https://docs.rs/actor-kit)
+[![crates.io](https://img.shields.io/crates/v/actor-kit.svg)](https://crates.io/crates/actor-kit)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+
 A work-stealing actor runtime for Rust with OTP-style supervision trees, built
 for hosting **100,000+ actors per node** with efficient load balancing and
 bounded, backpressured mailboxes.

@@ -69,12 +69,12 @@ impl SimExecutor {
 
     /// Drain all records observed so far (the runner reconciles per step).
     pub(crate) fn drain_records(&self) -> Vec<ExecRecord> {
-        std::mem::take(&mut self.records.lock().unwrap())
+        std::mem::take(&mut self.records.lock().unwrap_or_else(|e| e.into_inner()))
     }
 
     /// Total records observed since creation (monotonic).
     pub fn record_count(&self) -> usize {
-        self.records.lock().unwrap().len()
+        self.records.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
 }
 
@@ -91,15 +91,19 @@ impl ActorExecutor for SimExecutor {
         }
         let tag = match &message.payload {
             MessagePayload::Custom(bytes) if bytes.len() == 8 => {
+                #[allow(clippy::expect_used)] // guarded by the `len() == 8` match arm
                 let arr: [u8; 8] = bytes.as_slice().try_into().expect("8-byte payload");
                 ExecTag::Custom(u64::from_le_bytes(arr))
             }
             _ => ExecTag::System,
         };
-        self.records.lock().unwrap().push(ExecRecord {
-            actor: *actor_id,
-            tag,
-        });
+        self.records
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(ExecRecord {
+                actor: *actor_id,
+                tag,
+            });
         ExecutionResult::Success {
             fuel_consumed: 0,
             response: None,

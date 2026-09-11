@@ -5,6 +5,14 @@ Changelog](https://keepachangelog.com/) — versions follow [semver](https://sem
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-11
+
+### Fixed
+
+- 22-gate quality audit pass: documentation completeness
+  (README badges, REQUIREMENTS/THREAT-MODEL coverage) and
+  feature-gated test hygiene.
+
 ## [0.1.1] - 2026-09-05
 
 ### Fixed

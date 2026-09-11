@@ -92,7 +92,7 @@ pub mod rpc;
 mod scheduler;
 // The deterministic sim module relies on invariants (unique ids, peeked
 // non-empty queues, uncontended Mutexes) where unwrap/expect is intentional.
-#[cfg_attr(feature = "sim", allow(clippy::unwrap_used, clippy::expect_used))]
+#[cfg_attr(feature = "sim", allow(clippy::unwrap_used))]
 #[cfg(feature = "sim")]
 pub mod sim;
 pub mod supervisor;

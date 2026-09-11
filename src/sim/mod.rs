@@ -85,6 +85,10 @@
 //! assert_eq!(outcome.trace_hash, replay.trace_hash, "same seed ⇒ same trace");
 //! ```
 
+// The sim harness uses `expect` for invariants guaranteed by construction
+// (unique sim ids, peeked-before-pop, live-ord mailbox): violations are
+// unrecoverable logic bugs, not runtime conditions.
+#![allow(clippy::expect_used)]
 use std::collections::{BTreeMap, BinaryHeap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
