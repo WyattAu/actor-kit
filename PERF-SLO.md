@@ -1,5 +1,8 @@
 # Performance SLOs — actor-kit
 
+Every numeric claim in this file and the README is inventoried against its
+proof artifact in [CLAIMS.md](CLAIMS.md).
+
 Measured with criterion (`cargo bench --bench message_roundtrip`,
 `--bench spawn_throughput`, `--bench steal_contention`), re-measured 2026-09
 after the 0.1.1 drain-stall fix. Hardware: Intel(R) Core(TM) i5-9400F CPU @
@@ -42,18 +45,30 @@ previously an actor stalled after ~capacity cumulative messages (see
 - Actor spawn costs **≤ 1 ms P50 per actor** at the default mailbox capacity
   (allocation-bound; proportional to `mailbox_config.capacity`).
 
-## Allocation profile
+## Allocation profile (proven, not just read)
 
 - ≥ 1 allocation per message: the bench payload `MessagePayload::Custom`
   owns a `Vec<u8>`; the scheduler path additionally wraps the message into a
   queued task and parks a clone in the target mailbox (bounded by capacity;
-  the slot is released when the worker consumes the message). Dispatch itself
-  (registry lookup + enqueue) is lock-free-ish via crossbeam queues; a precise
-  per-op count needs the counting-allocator treatment (demonstrated on
-  `breaker`).
+  the slot is released when the worker consumes the message). **Verified
+  2026-09-12 with a counting global allocator**
+  (`tests/zero_alloc_tell.rs`, runs on every `cargo test`): the
+  steady-state tell allocates **~2 per call** (the payload `Vec` clone for
+  the mailbox + the crossbeam-deque `Injector` slot for the task), stable
+  across measurement windows. Spawn is excluded from that gate by design
+  (it is a configuration action, measured by `spawn_throughput`).
+- The pure mailbox enqueue (`try_send` happy path) is **allocation-free**
+  (delta = 0 in the same test) and costs **716 instructions** in the
+  iai-callgrind gate (`benches/iai_hot_path.rs`: `mailbox_try_send` 716,
+  `scheduler_tell` — full registry→mailbox→injector dispatch — 4 165
+  instructions).
 - Per spawn: one `ArrayQueue<Message>` + one `Semaphore` sized by
   `mailbox_config.capacity` — with the 10 000-message default this is
   ~640 KB zeroed per actor and dominates spawn cost (~580 µs).
+- Hosting-capacity note: "100,000+ actors per node" holds with modest
+  mailboxes — at the 10 000-message default (~640 KB/actor) it would imply
+  ~64 GB; at a 1 000-message mailbox (~64 KB/actor) it is ~6.4 GB. State
+  the mailbox size when quoting the capacity number.
 
 ## History: the 0.1.0 drain stall (fixed)
 

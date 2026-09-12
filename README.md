@@ -5,8 +5,9 @@
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 
 A work-stealing actor runtime for Rust with OTP-style supervision trees, built
-for hosting **100,000+ actors per node** with efficient load balancing and
-bounded, backpressured mailboxes.
+for hosting **100,000+ actors per node** (with modest per-actor mailboxes —
+see the capacity note in [PERF-SLO.md](PERF-SLO.md)) with efficient load
+balancing and bounded, backpressured mailboxes.
 
 ```toml
 [dependencies]
@@ -143,6 +144,12 @@ cargo bench
 
 Three criterion suites: `spawn_throughput`, `message_roundtrip`,
 `steal_contention`. Numbers are machine-dependent; run your own.
+
+Deterministic gates: the tell hot path is pinned by an iai-callgrind
+instruction gate (`benches/iai_hot_path.rs` — needs valgrind) and the
+allocation profile by `tests/zero_alloc_tell.rs` (counting allocator, runs
+on every `cargo test`). Every numeric claim is mapped to its proof artifact
+in [CLAIMS.md](CLAIMS.md).
 
 ## License
 

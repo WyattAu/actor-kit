@@ -5,6 +5,29 @@ Changelog](https://keepachangelog.com/) — versions follow [semver](https://sem
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-12
+
+### Added
+
+- **Claims proof-back** ([CLAIMS.md](CLAIMS.md)): every numeric performance
+  claim in README/PERF-SLO mapped to its proof artifact.
+- `tests/zero_alloc_tell.rs` — counting-allocator proof of the allocation
+  profile (previously "needs counting-allocator treatment"): steady-state
+  tell measures ~2 allocations/call (payload `Vec` clone + crossbeam-deque
+  `Injector` slot), bounded and stable; pure mailbox `try_send` proven
+  allocation-free.
+- `benches/iai_hot_path.rs` — iai-callgrind instruction gate for the tell
+  hot path: `mailbox_try_send` (716 instructions) and full `scheduler_tell`
+  dispatch (4 165 instructions); runs without worker threads so counts are
+  reproducible (CI-gated; needs valgrind to run locally).
+
+### Changed
+
+- PERF-SLO.md allocation profile upgraded from code reading to "proven";
+  the "100,000+ actors per node" claim now states its mailbox-size
+  condition (~64 KB/actor at 1 000-message mailboxes ≈ 6.4 GB for 100k
+  actors) instead of an unconditional number.
+
 ## [0.2.1] - 2026-09-11
 
 ### Fixed
