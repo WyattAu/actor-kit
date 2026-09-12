@@ -5,6 +5,25 @@ Changelog](https://keepachangelog.com/) — versions follow [semver](https://sem
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-12
+
+### Fixed
+
+- `SchedulerConfig::stealer_refresh_interval = 0` no longer panics worker
+  threads (`iteration % 0`): the worker loop clamps to >= 1 ("refresh every
+  iteration"). Pinned by
+  `tests/config_matrix.rs::knob_stealer_refresh_interval_zero_does_not_kill_workers`
+  (fails before, passes after).
+
+### Added
+
+- `tests/config_matrix.rs` — per-knob behavior matrix for all 16 config
+  knobs (scheduler 6, mailbox 3, memory pool 4, child spec 3). Dead-knob
+  report: `MemoryPoolConfig::page_size` / `::max_pools` (stored in
+  `BumpAllocatorInner::_config`, never read), `ChildSpec::shutdown_timeout`
+  (no reader), `ChildSpec::significant` (gates only a log line) — pinned
+  inert by `dead_knob_*` tests.
+
 ## [0.2.2] - 2026-09-12
 
 ### Added

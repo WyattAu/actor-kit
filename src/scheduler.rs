@@ -587,7 +587,9 @@ impl ActorScheduler {
         while running.load(Ordering::Acquire) {
             iteration = iteration.wrapping_add(1);
 
-            if iteration % config.stealer_refresh_interval == 0 {
+            // `0` would panic on `% 0`: clamp to "refresh every iteration".
+            // (Pinned by `knob_stealer_refresh_interval_zero_does_not_kill_workers`.)
+            if iteration % config.stealer_refresh_interval.max(1) == 0 {
                 let current_version = stealer_registry.version();
                 if current_version != last_version {
                     let stealers = stealer_registry.get_stealers(worker_id);
