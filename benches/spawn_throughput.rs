@@ -17,7 +17,7 @@ fn bench_spawn(c: &mut Criterion) {
             scheduler.start().unwrap();
             b.iter(|| {
                 for _ in 0..1000 {
-                    criterion::black_box(scheduler.spawn().unwrap());
+                    std::hint::black_box(scheduler.spawn().unwrap());
                 }
             });
             scheduler.stop();
