@@ -32,6 +32,14 @@ rkyv = { version = "0.8", features = ["bytecheck"], optional = true }
 # on the sim path.
 rand_xoshiro = { version = "0.8", optional = true }
 
+# Model-checking tests (see src/loom_mailbox.rs). Activated only with
+# RUSTFLAGS="--cfg loom"; the lib swaps mailbox atomics for loom's
+# equivalents. The `loom` feature is a marker switch for callers (CI and
+# local runs pass `--features loom`); the dependency itself is pulled in
+# by the cfg, so plain builds never compile loom.
+[target.'cfg(loom)'.dependencies]
+loom = { version = "0.7", features = ["futures"] }
+
 [dev-dependencies]
 proptest = "1"
 criterion = "0.5"
@@ -61,6 +69,11 @@ unsafe-pool = []
 sim = ["dep:rand_xoshiro"]
 # Everything above.
 full = ["serde", "zero-copy", "unsafe-pool", "sim"]
+# Loom model-checking marker (see src/loom_mailbox.rs). Does not pull the
+# dependency by itself — activation is `RUSTFLAGS="--cfg loom"`; pass this
+# feature alongside the flag as the canonical invocation:
+#   RUSTFLAGS="--cfg loom" cargo test --release --features loom loom -- --test-threads=1
+loom = []
 
 [[bench]]
 name = "spawn_throughput"
@@ -86,3 +99,6 @@ debug = true
 [lints.clippy]
 unwrap_used = "warn"
 expect_used = "warn"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }

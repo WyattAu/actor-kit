@@ -14,3 +14,17 @@ jobs:
       wasm: false
       miri: false
       bench-regression: true  # drain stall fixed in 0.1.1 (mailbox permits released on consumption); both benches run clean — see PERF-SLO.md
+
+  # Repo-specific: loom models live in src/loom_mailbox.rs (mailbox
+  # protocol double — permit/size accounting + recv wakeup handshake) with
+  # thin wrappers in the lib target and tests/loom_mailbox.rs. Bounded via
+  # LOOM_MAX_PREEMPTIONS=2; full exploration of these tiny models completes
+  # well under the 2-minute budget.
+  loom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: loom models (mailbox protocol)
+        run: RUSTFLAGS="--cfg loom" LOOM_MAX_PREEMPTIONS=2 cargo test --release --features loom -- --test-threads=1 loom

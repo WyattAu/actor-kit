@@ -82,6 +82,10 @@ pub mod error;
 mod executor;
 mod handle;
 mod mailbox;
+// Loom model double of the mailbox protocol — compiled only under
+// `--cfg loom` (see the module docs for what is modeled vs trusted).
+#[cfg(loom)]
+pub mod loom_mailbox;
 #[cfg(feature = "unsafe-pool")]
 pub mod memory_pool;
 pub mod policy;
