@@ -102,3 +102,6 @@ expect_used = "warn"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
+
+[package.metadata.layers]
+tier = "L2"
