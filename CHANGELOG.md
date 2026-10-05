@@ -5,6 +5,8 @@ Changelog](https://keepachangelog.com/) — versions follow [semver](https://sem
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-10-05
+
 ### Fixed
 
 - **A suspended actor can no longer be resumed or stopped.** `worker_loop`'s
@@ -19,6 +21,11 @@ Changelog](https://keepachangelog.com/) — versions follow [semver](https://sem
   ordinary messages still queue in order. Found by the estate-integration
   `systems_substrate` suite, which pins the regression in
   `scheduler::tests::a_suspended_actor_accepts_control_signals_and_resumes`.
+
+  The fix was on `main` but never released, so `0.2.3` — the version
+  `estate-integration` pins — still deadlocks. A downstream consumer reading
+  the changelog would have had no way to tell that the version they pinned
+  predated the fix.
 
 ## [0.2.3] - 2026-09-12
 
