@@ -804,7 +804,23 @@ impl ActorScheduler {
                 }
             }
             Some(ActorState::Suspended) => {
-                if let Some(mailbox) = registry.get_mailbox(&actor_id) {
+                // Control signals must still be *processed* while the actor
+                // is suspended, or the actor can never be resumed: the
+                // ordinary arm (which calls `handle_state_change_for`) is
+                // the only path that leaves `Suspended`, so re-queueing the
+                // Resume signal would make suspension permanent. Everything
+                // else stays in the mailbox, in order, behind the signal.
+                if matches!(
+                    message.payload,
+                    MessagePayload::Signal(_) | MessagePayload::Start | MessagePayload::Stop
+                ) {
+                    Self::handle_state_change_for(actor_id, message, registry);
+                    if let Some(mailbox) = registry.get_mailbox(&actor_id) {
+                        mailbox.try_recv();
+                    }
+                } else if let Some(mailbox) = registry.get_mailbox(&actor_id) {
+                    // Suspended: re-queue (not receive), so the message keeps
+                    // its place and is not lost when the mailbox is full.
                     let _ = mailbox.try_send(message.clone());
                 }
             }
@@ -1069,5 +1085,69 @@ mod tests {
         assert!(policy.admit_actor().is_ok());
         assert!(policy.admit_message(100).is_ok());
         policy.release_actor();
+    }
+
+    /// Regression: a suspended actor must be resumable and stoppable.
+    ///
+    /// The dispatch used to re-queue *every* message while an actor was
+    /// `Suspended`, including the `Resume`/`Stop` signals — so the only arm
+    /// that could lift the suspension never ran and `pause()` was a permanent
+    /// deadlock reachable from two documented handle methods. Control signals
+    /// are now processed in place; ordinary messages still queue.
+    #[test]
+    fn a_suspended_actor_accepts_control_signals_and_resumes() {
+        let rt = crate::rt();
+        rt.block_on(async {
+            let scheduler =
+                std::sync::Arc::new(ActorScheduler::new(SchedulerConfig::new().workers(2)));
+            scheduler.start().expect("workers start");
+            let handle = crate::ActorBuilder::new()
+                .name("suspending")
+                .spawn(&scheduler)
+                .expect("actor spawns");
+
+            macro_rules! wait {
+                ($cond:expr) => {{
+                    let mut ok = false;
+                    for _ in 0..200 {
+                        if $cond {
+                            ok = true;
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                    }
+                    ok
+                }};
+            }
+
+            handle.start().await.expect("start accepted");
+            assert!(wait!(handle.is_running()), "actor runs");
+
+            handle.pause().await.expect("pause accepted");
+            assert!(wait!(handle.is_suspended()), "actor suspends");
+
+            // A suspended actor still queues ordinary work rather than
+            // dropping it.
+            handle
+                .send(MessagePayload::Custom(vec![7]))
+                .await
+                .expect("a suspended actor accepts messages");
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            assert!(handle.is_suspended(), "queued work does not resume it");
+
+            // ...and Resume is processed while suspended.
+            handle.resume().await.expect("resume accepted");
+            assert!(
+                wait!(handle.is_running()),
+                "a suspended actor must be resumable — it used to stay \
+                 Suspended forever because Resume was re-queued"
+            );
+
+            // Stop works too, which it also did not.
+            handle.stop().await.expect("stop accepted");
+            assert!(wait!(handle.is_stopped()), "and stoppable");
+
+            scheduler.stop();
+        });
     }
 }

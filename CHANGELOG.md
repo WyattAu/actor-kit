@@ -5,6 +5,21 @@ Changelog](https://keepachangelog.com/) — versions follow [semver](https://sem
 
 ## [Unreleased]
 
+### Fixed
+
+- **A suspended actor can no longer be resumed or stopped.** `worker_loop`'s
+  dispatch re-queued *every* message while an actor was `Suspended`,
+  including the `Resume` and `Stop` signals. Since the ordinary
+  (`Running | Creating`) arm is the only one that calls
+  `handle_state_change_for`, the signal that would lift the suspension was
+  itself queued behind the suspension — so `pause()` was a permanent
+  deadlock, reachable from two documented `ActorHandle` methods, and the
+  mailbox kept accepting messages that were never processed. Control signals
+  (`Signal`, `Start`, `Stop`) are now processed in place while suspended;
+  ordinary messages still queue in order. Found by the estate-integration
+  `systems_substrate` suite, which pins the regression in
+  `scheduler::tests::a_suspended_actor_accepts_control_signals_and_resumes`.
+
 ## [0.2.3] - 2026-09-12
 
 ### Fixed
