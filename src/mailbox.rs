@@ -5,6 +5,15 @@
 //! and `tokio::sync::Notify` for efficient async waiting.
 
 use crossbeam_queue::ArrayQueue;
+// Under `--cfg loom` the mailbox's own atomics are swapped for loom's
+// tracked equivalents so model-checking explores their interleavings (see
+// `loom_mailbox`). The tokio Semaphore/Notify and crossbeam ArrayQueue
+// internals stay native — they are trusted third-party concurrency
+// machinery; the crate-owned discipline is the accounting and the wakeup
+// handshake modeled in `loom_mailbox`.
+#[cfg(loom)]
+use loom::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+#[cfg(not(loom))]
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::{Notify, Semaphore};
