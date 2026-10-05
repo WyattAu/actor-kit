@@ -5,6 +5,32 @@ Changelog](https://keepachangelog.com/) — versions follow [semver](https://sem
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-10-05
+
+### Fixed
+
+- **A message sent to a suspended actor was stranded in the mailbox forever.**
+  `0.2.4` made `Resume` and `Stop` work while suspended, which turned `pause()`
+  from a permanent deadlock into a real suspension — and exposed what the
+  suspended dispatch arm does with ordinary work: it re-queues the *message*
+  into the mailbox, but the *task* that was popped to deliver it is gone.
+
+  Each `send` enqueues exactly one task, and nothing re-enqueues on the
+  re-queue path, so a suspended actor had no pending work item at all. The
+  queued messages were only drained if some *unrelated later send* happened to
+  schedule the actor again. `send` had returned `Ok` the entire time, so from
+  the caller's side a message was accepted and then silently never processed.
+
+  When a control signal ends a suspension, the worker now drains the mailbox
+  inline before returning. Draining inline rather than enqueueing a task needs
+  no access to the work queues from a static dispatch helper, and the worker
+  already owns the only task that existed for that actor.
+
+  Pinned by `scheduler::tests::work_queued_during_suspension_runs_after_the_resume`
+  (fails before, passes after) and extended
+  `a_suspended_actor_accepts_control_signals_and_resumes` to assert the queued
+  work is actually run.
+
 ## [0.2.4] - 2026-10-05
 
 ### Fixed

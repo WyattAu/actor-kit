@@ -818,6 +818,35 @@ impl ActorScheduler {
                     if let Some(mailbox) = registry.get_mailbox(&actor_id) {
                         mailbox.try_recv();
                     }
+                    // A control signal can end the suspension. When it does,
+                    // whatever was queued *behind* it has to be run now: the
+                    // tasks for those messages were consumed and dropped while
+                    // the actor was suspended (each `send` enqueues one task,
+                    // and the suspended arm below re-queues only the message),
+                    // so nothing else will ever wake this actor up. Without
+                    // this drain the last message sent before a resume is
+                    // stranded in the mailbox until an unrelated later send
+                    // happens to schedule the actor again.
+                    //
+                    // Draining inline rather than enqueueing a task needs no
+                    // access to the work queues, and this worker already owns
+                    // the only task there was for this actor.
+                    if matches!(
+                        registry.get_state(&actor_id),
+                        Some(ActorState::Running) | Some(ActorState::Creating)
+                    ) {
+                        while let Some(mailbox) = registry.get_mailbox(&actor_id) {
+                            if mailbox.is_empty() {
+                                break;
+                            }
+                            match mailbox.try_recv() {
+                                Some(queued) => Self::process_single_message(
+                                    registry, actor_id, &queued, stats, executor,
+                                ),
+                                None => break,
+                            }
+                        }
+                    }
                 } else if let Some(mailbox) = registry.get_mailbox(&actor_id) {
                     // Suspended: re-queue (not receive), so the message keeps
                     // its place and is not lost when the mailbox is full.
@@ -1127,7 +1156,9 @@ mod tests {
             assert!(wait!(handle.is_suspended()), "actor suspends");
 
             // A suspended actor still queues ordinary work rather than
-            // dropping it.
+            // dropping it. The baseline is taken *before* the send, since the
+            // drain after the resume is what has to move this number.
+            let processed_before_resume = handle.processed_count();
             handle
                 .send(MessagePayload::Custom(vec![7]))
                 .await
@@ -1143,10 +1174,83 @@ mod tests {
                  Suspended forever because Resume was re-queued"
             );
 
+            // ...and the work queued while suspended is actually run. Each
+            // `send` enqueues one task, and the suspended arm consumed that
+            // task while re-queueing only the message, so nothing was left to
+            // wake the actor: the message sat in the mailbox indefinitely and
+            // was only drained by some unrelated later send. `send` had
+            // returned `Ok` the whole time.
+            assert!(
+                wait!(handle.processed_count() > processed_before_resume),
+                "the message queued during the suspension must be processed \
+                 after the resume, not stranded in the mailbox"
+            );
+
             // Stop works too, which it also did not.
             handle.stop().await.expect("stop accepted");
             assert!(wait!(handle.is_stopped()), "and stoppable");
 
+            scheduler.stop();
+        });
+    }
+
+    /// A message sent to a suspended actor is accepted, held, and then run once
+    /// the actor resumes — including when the resume is the last event, with no
+    /// further sends to nudge the scheduler.
+    #[test]
+    fn work_queued_during_suspension_runs_after_the_resume() {
+        let rt = crate::rt();
+        rt.block_on(async {
+            let scheduler =
+                std::sync::Arc::new(ActorScheduler::new(SchedulerConfig::new().workers(2)));
+            scheduler.start().expect("workers start");
+            let handle = crate::ActorBuilder::new()
+                .name("stranded")
+                .spawn(&scheduler)
+                .expect("actor spawns");
+
+            macro_rules! wait {
+                ($cond:expr) => {{
+                    let mut ok = false;
+                    for _ in 0..200 {
+                        if $cond {
+                            ok = true;
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                    }
+                    ok
+                }};
+            }
+
+            handle.start().await.expect("start accepted");
+            assert!(wait!(handle.is_running()), "actor runs");
+
+            handle.pause().await.expect("pause accepted");
+            assert!(wait!(handle.is_suspended()), "actor suspends");
+
+            let before = handle.processed_count();
+            for payload in 0..3u8 {
+                handle
+                    .send(MessagePayload::Custom(vec![payload]))
+                    .await
+                    .expect("a suspended actor accepts messages");
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            assert!(
+                handle.processed_count() == before,
+                "nothing runs while suspended"
+            );
+
+            handle.resume().await.expect("resume accepted");
+            assert!(
+                wait!(handle.processed_count() >= before + 3),
+                "all three queued messages run after the resume: {} of 3",
+                handle.processed_count() - before
+            );
+
+            handle.stop().await.expect("stop accepted");
+            assert!(wait!(handle.is_stopped()), "stoppable");
             scheduler.stop();
         });
     }
