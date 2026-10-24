@@ -1,6 +1,6 @@
 [package]
 name = "actor-kit"
-version = "0.2.6"
+version = "0.2.7"
 edition = "2021"
 rust-version = "1.85"
 description = "Work-stealing actor runtime: OTP supervision trees, crossbeam work-stealing, bounded backpressure"
