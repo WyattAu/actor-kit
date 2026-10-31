@@ -1,10 +1,137 @@
+# Changelog
+
+All notable changes to this project are documented here. Format: [Keep a
 Changelog](https://keepachangelog.com/); versions follow [semver](https://semver.org).
+
+## [Unreleased]
+
+## [0.2.5] - 2026-10-05
+
+### Fixed
+
+- **A message sent to a suspended actor was stranded in the mailbox forever.**
+  `0.2.4` made `Resume` and `Stop` work while suspended, which turned `pause()`
   from a permanent deadlock into a real suspension; and exposed what the
+  suspended dispatch arm does with ordinary work: it re-queues the *message*
+  into the mailbox, but the *task* that was popped to deliver it is gone.
+
+  Each `send` enqueues exactly one task, and nothing re-enqueues on the
+  re-queue path, so a suspended actor had no pending work item at all. The
+  queued messages were only drained if some *unrelated later send* happened to
+  schedule the actor again. `send` had returned `Ok` the entire time, so from
+  the caller's side a message was accepted and then silently never processed.
+
+  When a control signal ends a suspension, the worker now drains the mailbox
+  inline before returning. Draining inline rather than enqueueing a task needs
+  no access to the work queues from a static dispatch helper, and the worker
+  already owns the only task that existed for that actor.
+
+  Pinned by `scheduler::tests::work_queued_during_suspension_runs_after_the_resume`
+  (fails before, passes after) and extended
+  `a_suspended_actor_accepts_control_signals_and_resumes` to assert the queued
+  work is actually run.
+
+## [0.2.4] - 2026-10-05
+
+### Fixed
+
+- **A suspended actor can no longer be resumed or stopped.** `worker_loop`'s
+  dispatch re-queued *every* message while an actor was `Suspended`,
+  including the `Resume` and `Stop` signals. Since the ordinary
+  (`Running | Creating`) arm is the only one that calls
+  `handle_state_change_for`, the signal that would lift the suspension was
   itself queued behind the suspension; so `pause()` was a permanent
+  deadlock, reachable from two documented `ActorHandle` methods, and the
+  mailbox kept accepting messages that were never processed. Control signals
+  (`Signal`, `Start`, `Stop`) are now processed in place while suspended;
+  ordinary messages still queue in order. Found by the estate-integration
+  `systems_substrate` suite, which pins the regression in
+  `scheduler::tests::a_suspended_actor_accepts_control_signals_and_resumes`.
+
   The fix was on `main` but never released, so `0.2.3`; the version
   `estate-integration` pins; still deadlocks. A downstream consumer reading
+  the changelog would have had no way to tell that the version they pinned
+  predated the fix.
+
+## [0.2.3] - 2026-09-12
+
+### Fixed
+
+- `SchedulerConfig::stealer_refresh_interval = 0` no longer panics worker
+  threads (`iteration % 0`): the worker loop clamps to >= 1 ("refresh every
+  iteration"). Pinned by
+  `tests/config_matrix.rs::knob_stealer_refresh_interval_zero_does_not_kill_workers`
+  (fails before, passes after).
+
+### Added
+
 - `tests/config_matrix.rs`; per-knob behavior matrix for all 16 config
+  knobs (scheduler 6, mailbox 3, memory pool 4, child spec 3). Dead-knob
+  report: `MemoryPoolConfig::page_size` / `::max_pools` (stored in
+  `BumpAllocatorInner::_config`, never read), `ChildSpec::shutdown_timeout`
   (no reader), `ChildSpec::significant` (gates only a log line); pinned
+  inert by `dead_knob_*` tests.
+
+## [0.2.2] - 2026-09-12
+
+### Added
+
+- **Claims proof-back** ([CLAIMS.md](CLAIMS.md)): every numeric performance
+  claim in README/PERF-SLO mapped to its proof artifact.
 - `tests/zero_alloc_tell.rs`; counting-allocator proof of the allocation
+  profile (previously "needs counting-allocator treatment"): steady-state
+  tell measures ~2 allocations/call (payload `Vec` clone + crossbeam-deque
+  `Injector` slot), bounded and stable; pure mailbox `try_send` proven
+  allocation-free.
 - `benches/iai_hot_path.rs`; iai-callgrind instruction gate for the tell
+  hot path: `mailbox_try_send` (716 instructions) and full `scheduler_tell`
+  dispatch (4 165 instructions); runs without worker threads so counts are
+  reproducible (CI-gated; needs valgrind to run locally).
+
+### Changed
+
+- PERF-SLO.md allocation profile upgraded from code reading to "proven";
+  the "100,000+ actors per node" claim now states its mailbox-size
+  condition (~64 KB/actor at 1 000-message mailboxes ≈ 6.4 GB for 100k
+  actors) instead of an unconditional number.
+
+## [0.2.1] - 2026-09-11
+
+### Fixed
+
+- 22-gate quality audit pass: documentation completeness
+  (README badges, REQUIREMENTS/THREAT-MODEL coverage) and
+  feature-gated test hygiene.
+
+## [0.1.1] - 2026-09-05
+
+### Fixed
+- **Message drain stall after sustained delivery**: an actor stopped consuming
+  after ~`mailbox_capacity` cumulative messages. Every `send` permanently
+  consumed one mailbox capacity permit (acquired + `forget()`), and the
   scheduler never released it; the worker processes the `Task` copy from the
+  work queue, not the mailbox copy, so permits (and mailbox slots) leaked
+  until the semaphore exhausted and all further sends blocked forever
+  (`src/scheduler.rs`, `process_single_message`). The worker now releases the
+  mailbox slot when it consumes a message
+  (`tests/stall_regression.rs` covers 500k cumulative messages, 10/10 green).
+- `SchedulerConfig::mailbox_config` was a dead knob: the registry silently
+  built every actor mailbox with the 10 000-message default, masking the stall
+  threshold. The configured capacity is now honored
+  (`ActorRegistry::with_mailbox_config`).
+- Lost-wakeup race in `Mailbox::recv`: the `Notify` interest is now registered
+  before the emptiness check, so a concurrent send cannot be missed.
+- `benches/message_roundtrip.rs` no longer rebuilds the runtime every 4k
+  messages (workaround for the stall); `benches/steal_contention.rs` uses
+  backpressured `send` instead of fail-fast `try_send().unwrap()` and runs
+  clean. CI `bench-regression` re-enabled.
+
+### Changed
+- Re-measured and re-stated performance SLOs (see PERF-SLO.md); the previous
+  numbers were taken against an effectively unbounded mailbox and are not
+  comparable.
+
+## [0.1.0] - 2026-09-05
+
+### Added
+- Initial public release.
